@@ -1,0 +1,6 @@
+*.env
+*.swo
+*.swp
+bundle.js
+browserify-cache.json
+jq.*

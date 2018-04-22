@@ -1,0 +1,17 @@
+<!doctype html>
+<script src="https://trello.com/power-ups/power-up.min.js"></script>
+<link rel="stylesheet" href="https://trello.com/power-ups/power-up.css">
+<link rel="stylesheet" href="/powerup/style.css">
+<div id="root"></div>
+
+<script src="https://cdn.rawgit.com/BendingBender/object-assign-shim/78636729ef09f38f68f6bf9168c27cf032179844/index.js"></script>
+</script>
+<script>
+if (!String.prototype.startsWith) {
+  String.prototype.startsWith = function(search, pos) {
+    return this.substr(!pos || pos < 0 ? 0 : +pos, search.length) === search
+  }
+}
+</script>
+<script src="./bundle.js"></script>
+<script src="./jq.wasm.min.js"></script>
