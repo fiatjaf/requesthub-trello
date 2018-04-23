@@ -1,3 +1,7 @@
+* {
+  box-sizing: border-box;
+}
+
 #root {
   margin: 20px auto;
   width: 90%;
@@ -5,6 +9,7 @@
 
 p {
   font-size: 110%;
+  line-height: 1.5em;
 }
 
 ul {
@@ -49,7 +54,7 @@ input {
   flex-direction: column;
 }
   #setup label {
-    margin: 10px 0;
+    margin: 0 0 10px;
     display: flex;
     flex-direction: column;
   }
@@ -57,13 +62,27 @@ input {
       font-weight: bold;
     }
     #setup label input,
-    #setup label textarea {
-      width: 100%;
-    }
-    #setup label textarea {
-      height: 300px;
-    }
+    #setup label textarea,
     #setup label pre {
-      white-space: pre-wrap;
+      width: 100%;
       font-family: monospace;
     }
+    #setup label textarea {
+      height: 100px;
+      min-width: 100%;
+    }
+  #setup button {
+    width: 100%;
+  }
+
+.loader {
+  width: 65px;
+}
+
+.address {
+  line-height: 1.5em;
+  font-size: 1.8em;
+  margin: 15px 0;
+  font-family: monospace;
+  text-align: center;
+}

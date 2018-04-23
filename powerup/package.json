@@ -1,7 +1,7 @@
 {
   "main": "main.js",
   "scripts": {
-    "watch": "npm run download-jq && find -name \"*.js\" ! -name \"bundle.js\" ! -path \"*node_modules*\" | entr browserifyinc -vd app.js -o bundle.js",
+    "watch": "find -name \"*.js\" ! -name \"bundle.js\" ! -path \"*node_modules*\" | entr godotenv -f ../.env browserifyinc -vd app.js -o bundle.js",
     "download-jq": "rm jq.* && wget https://github.com/fiatjaf/jq-web/releases/download/0.2.1/jq.wasm.wasm; wget https://github.com/fiatjaf/jq-web/releases/download/0.2.1/jq.wasm.min.js",
     "heroku-postbuild": "browserify powerup/app.js -o powerup/bundle.js && cd powerup && npm run download-jq"
   },
@@ -26,7 +26,6 @@
     "bubleify": "^0.7.0",
     "debounce": "^1.1.0",
     "envify": "^4.1.0",
-    "halogen": "^0.2.0",
     "isomorphic-fetch": "*",
     "react": "^16.3.2",
     "react-dom": "^16.3.2",

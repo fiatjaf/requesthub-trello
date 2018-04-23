@@ -14,6 +14,10 @@ function trelloAuth (t) {
     )
 }
 
+module.exports.hasTokenStored = function (t) {
+  return t.get('member', 'private', 'token', null)
+}
+
 module.exports.getToken = function (t) {
   return t.get('member', 'private', 'token', null)
     .then(token => token || trelloAuth(t))

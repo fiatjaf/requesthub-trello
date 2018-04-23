@@ -3,9 +3,9 @@
 const h = require('react-hyperscript')
 const React = require('react')
 const render = require('react-dom').render
-const Loader = require('halogen/SkewLoader')
 const debounce = require('debounce')
 
+const Loader = require('./loader')
 const {getToken} = require('./helpers')
 const t = TrelloPowerUp.iframe()
 const colors = TrelloPowerUp.util.colors
@@ -28,6 +28,7 @@ class Setup extends React.Component {
       this.setState({
         testResult: jq.raw(this.state.testData, this.state.filter)
       })
+      t.sizeTo('html')
     }, 700)
   }
 
@@ -40,7 +41,7 @@ class Setup extends React.Component {
       return (
         h('div', [
           h('center', [
-            h(Loader, {color: colors.getHexString('green'), size: '65px', margin: '8px'}),
+            h(Loader, {color: colors.getHexString('orange')}),
             h('p', this.state.loading)
           ])
         ])
@@ -51,9 +52,10 @@ class Setup extends React.Component {
       return (
         h('div', [
           h('h1', 'Endpoint saved successfully'),
+          h('.address', `${process.env.SERVICE_URL}/w/${this.state.success}`),
           h('p', [
             'Now whenever data is posted to ',
-            h('code', `https://${process.env.SERVICE_URL}/w/${this.state.success}`),
+            h('code', `${process.env.SERVICE_URL}/w/${this.state.success}`),
             ' it will be processed by the ',
             h('a', {target: '_blank', href: 'https://stedolan.github.io/jq/'}, 'jq'),
             ' filter ',
@@ -100,19 +102,19 @@ class Setup extends React.Component {
           h('span', 'Test result: '),
           h('pre', this.state.testResult)
         ]),
-        h('button', 'Save')
+        h('button.mod-primary', 'Save')
       ])
     )
   }
 
   save () {
-    this.setState({loading: 'Saving your endpoint data...'})
+    this.setState({loading: 'Saving your endpoint settings...'})
 
     getToken(t)
       .then(token => fetch('/trello/card', {
         method: 'PUT',
         body: JSON.stringify({
-          cardShortLink: this.cardShortLink,
+          card: this.cardShortLink,
           address: this.address,
           filter: this.state.filter,
           token

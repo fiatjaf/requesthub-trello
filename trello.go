@@ -20,19 +20,19 @@ func GetCard(w http.ResponseWriter, r *http.Request) {
 		log.Warn().Err(err).
 			Str("token", token).
 			Str("card", card).
-			Msg("given token doesn't have access to card")
+			Msg("failed to get member and card info")
 		http.Error(w, err.Error(), 401)
 		return
 	}
 
-	var endpoints []struct {
+	endpoints := []struct {
 		Address string `json:"address" db:"address"`
 		Filter  string `json:"filter" db:"filter"`
-	}
+	}{}
 	err = pg.Select(&endpoints, `
 SELECT address, filter
 FROM pipe
-INNER JOIN Input ON pipe.i = input.address
+INNER JOIN input ON pipe.i = input.address
 INNER JOIN output ON pipe.o = output.id
 WHERE output.target = $1
   AND output.owner = $2
@@ -73,6 +73,8 @@ func SetCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	jsonData, _ := json.Marshal(map[string]string{"token": info.Token})
+
 	if info.Address == "" {
 		// means a new endpoint must be created
 
@@ -88,11 +90,11 @@ WITH i AS (
 ),
      o AS (
   INSERT INTO output (kind, target, filter, owner, data)
-  VALUES ('trello:comment', $3, $4, $2, '{"token": $5}')
+  VALUES ('trello:comment', $3, $4, $2, $5)
   RETURNING id
 )
 INSERT INTO pipe VALUES ((SELECT address FROM i), (SELECT id FROM o))
-                `, info.NewAddress, username+"@trello", info.Card, info.Filter, info.Token)
+                `, info.NewAddress, username+"@trello", info.Card, info.Filter, jsonData)
 	} else {
 		if info.NewAddress == "" {
 			// people can change their addresses, by default they stay the same
@@ -105,12 +107,13 @@ WITH io AS (
       i AS (
   UPDATE input SET address = $2
   WHERE address = (SELECT i FROM io)
-)
+),
       o AS (
-  UPDATE input SET filter = $3, target = $4, data = '{"token": $5}'
+  UPDATE output SET filter = $3, target = $4, data = $5
   WHERE id = (SELECT o FROM io)
 )
-                `, info.Address, info.NewAddress, info.Filter, info.Card, info.Token)
+SELECT NULL
+                `, info.Address, info.NewAddress, info.Filter, info.Card, jsonData)
 	}
 	if err != nil {
 		log.Warn().Err(err).Str("card", info.Card).
@@ -126,24 +129,25 @@ func trelloUsernameAndCard(token string, card string) (username string, err erro
 	var user struct {
 		Name string `json:"username"`
 	}
-	resp, err := http.Get("https://api.trello.com/1/members/me?key=" + s.TrelloAPIKey + "&token=" + token + "?fields=username")
+	resp, err := http.Get("https://api.trello.com/1/members/me?key=" + s.TrelloAPIKey + "&token=" + token + "&fields=username")
 	if err == nil && resp.StatusCode >= 300 {
 		b, _ := ioutil.ReadAll(resp.Body)
-		err = errors.New("trello returned '" + string(b) + "'.")
+		err = errors.New("trello returned '" + string(b) + "' on /members call.")
 	}
 	if err != nil {
 		return
 	}
+
 	err = json.NewDecoder(resp.Body).Decode(&user)
 	if err != nil {
 		return
 	}
 	username = user.Name
 
-	resp, err = http.Get("https://api.trello.com/1/cards/" + card + "?key=" + s.TrelloAPIKey + "&token=" + token + "?fields=shortLink")
+	resp, err = http.Get("https://api.trello.com/1/cards/" + card + "?key=" + s.TrelloAPIKey + "&token=" + token + "&fields=shortLink")
 	if err == nil && resp.StatusCode >= 300 {
 		b, _ := ioutil.ReadAll(resp.Body)
-		err = errors.New("trello returned '" + string(b) + "'.")
+		err = errors.New("trello returned '" + string(b) + "' on /cards call.")
 	}
 	if err != nil {
 		return
