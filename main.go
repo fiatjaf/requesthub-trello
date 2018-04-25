@@ -1,7 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -9,9 +14,11 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/graphql-go/graphql"
+	"github.com/jingweno/jqplay/jq"
 	"github.com/jmoiron/sqlx"
 	"github.com/kelseyhightower/envconfig"
 	_ "github.com/lib/pq"
+	"github.com/lucsky/cuid"
 	"github.com/rs/zerolog"
 	"gopkg.in/tylerb/graceful.v1"
 )
@@ -19,6 +26,7 @@ import (
 type Settings struct {
 	ServiceURL   string `envconfig:"SERVICE_URL" required:"true"`
 	Port         string `envconfig:"PORT" required:"true"`
+	JQPath       string `envconfig:"JQ_PATH" required:"true"`
 	DatabaseURL  string `envconfig:"DATABASE_URL" required:"true"`
 	TrelloAPIKey string `envconfig:"TRELLO_API_KEY" required:"true"`
 	HashidsSalt  string `envconfig:"HASHIDS_SALT" required:"true"`
@@ -44,20 +52,106 @@ func main() {
 			Msg("error connecting to postgres")
 	}
 
+	jq.Path = s.JQPath
+
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
 	router = mux.NewRouter()
+
+	// set request ids for everybody
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r = r.WithContext(context.WithValue(r.Context(), "request-id", cuid.Slug()))
+			next.ServeHTTP(w, r)
+		})
+	})
 
 	router.Path("/trello/card").Methods("GET").HandlerFunc(GetCard)
 	router.Path("/trello/card").Methods("PUT").HandlerFunc(SetCard)
 
 	// receive webhooks here
-	router.PathPrefix("/w/").HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(200)
+	router.HandleFunc("/w/{address}", func(w http.ResponseWriter, r *http.Request) {
+		log := log.With().Str("req", r.Context().Value("request-id").(string)).Logger()
 
-		},
-	)
+		var targets []EndpointTarget
+		var address = mux.Vars(r)["address"]
+		var errs = make(chan error, len(targets))
+		var c = 0
+
+		var errorCode = 400
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			goto end
+		}
+
+		if !json.Valid(body) {
+			err = errors.New("got invalid json")
+			goto end
+		}
+
+		targets, err = getEndpointTargets(pg, address)
+		if err != nil {
+			errorCode = 404
+			goto end
+		}
+
+		log.Debug().Str("body", string(body)).Msg("got webhook")
+
+		for _, target := range targets {
+			go func(target EndpointTarget) {
+				log := log.With().Str("filter", target.Filter).Logger()
+
+				ev := &jq.JQ{
+					string(body),
+					target.Filter,
+					[]jq.JQOpt{
+						{"compact-output", true},
+					},
+				}
+
+				evctx, evcancel := context.WithTimeout(r.Context(), time.Second*2)
+				defer evcancel()
+				value := &bytes.Buffer{}
+				ev.Eval(evctx, value)
+
+				reqctx, reqcancel := context.WithTimeout(r.Context(), time.Second*10)
+				defer reqcancel()
+				req, err := http.NewRequest("", "", &bytes.Buffer{})
+				if err != nil {
+					panic(err)
+				}
+
+				log.Debug().Str("data", value.String()).Msg("dispatching")
+				errs <- dispatch(
+					req.WithContext(reqctx),
+					value.Bytes(),
+					target,
+				)
+			}(target)
+		}
+
+		err = nil
+		c = 0
+		for terr := range errs {
+			if err != nil {
+				log.Warn().Err(terr).Msg("dispatch error")
+				err = terr
+			}
+
+			c++
+			if c >= len(targets) {
+				close(errs)
+			}
+		}
+
+	end:
+		if err != nil {
+			log.Warn().Err(err).Str("body", string(body)).Msg("error handling webhook")
+			http.Error(w, "error handling webhook", errorCode)
+			return
+		}
+		w.WriteHeader(200)
+	})
 
 	router.Path("/favicon.ico").Methods("GET").HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {

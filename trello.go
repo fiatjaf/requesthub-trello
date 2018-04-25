@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io/ioutil"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/lucsky/cuid"
 )
@@ -156,6 +158,37 @@ func trelloUsernameAndCard(token string, card string) (username string, err erro
 	return
 }
 
-func postComment(token, card, comment string) error {
+func dispatchTrello(req *http.Request, value []byte, target EndpointTarget) error {
+	var t struct {
+		Token string `json:"token"`
+	}
+	err = target.Data.Unmarshal(&t)
+	if err != nil {
+		log.Error().Err(err).Str("json", target.Data.String()).
+			Msg("failed to parse trello token")
+		return err
+	}
+
+	params := url.Values{}
+	params.Add("key", s.TrelloAPIKey)
+	params.Add("token", t.Token)
+	params.Add("text", "Got webhook on **"+target.Address+"**:\n\n>"+
+		strings.Join(strings.Split(string(value), "\n"), "\n>"))
+
+	req.Method = "POST"
+	req.URL.Scheme = "https"
+	req.URL.Host = "api.trello.com"
+	req.URL.Path = "/1/cards/" + target.Target + "/actions/comments"
+	req.URL.RawQuery = params.Encode()
+
+	resp, err := http.DefaultClient.Do(req)
+
+	if err == nil && resp.StatusCode >= 300 {
+		b, _ := ioutil.ReadAll(resp.Body)
+		err = errors.New("trello returned '" + string(b) + "' on /comments call.")
+	}
+	if err != nil {
+		return err
+	}
 	return nil
 }
