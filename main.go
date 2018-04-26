@@ -76,6 +76,7 @@ func main() {
 		var targets []EndpointTarget
 		var address = mux.Vars(r)["address"]
 		var errs = make(chan error, len(targets))
+		var sbody string
 		var c = 0
 
 		var errorCode = 400
@@ -95,7 +96,12 @@ func main() {
 			goto end
 		}
 
-		log.Debug().Str("body", string(body)).Msg("got webhook")
+		sbody = string(body)
+		if len(sbody) > 80 {
+			sbody = sbody[:50]
+		}
+
+		log.Debug().Str("addr", address).Str("body", sbody).Msg("got webhook")
 
 		for _, target := range targets {
 			go func(target EndpointTarget) {
@@ -146,7 +152,7 @@ func main() {
 
 	end:
 		if err != nil {
-			log.Warn().Err(err).Str("body", string(body)).Msg("error handling webhook")
+			log.Warn().Err(err).Str("body", sbody).Msg("error handling webhook")
 			http.Error(w, "error handling webhook", errorCode)
 			return
 		}
