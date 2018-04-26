@@ -4,3 +4,4 @@
 bundle.js
 browserify-cache.json
 jq.*
+node_modules

@@ -25,10 +25,15 @@ class Setup extends React.Component {
     }
 
     this.jq = debounce(() => {
-      this.setState({
-        testResult: jq.raw(this.state.testData, this.state.filter)
-      })
-      t.sizeTo('html')
+      try {
+        var res = jq.raw(this.state.testData, this.state.filter)
+        this.setState({
+          testResult: res
+        })
+        t.sizeTo('html')
+      } catch (e) {
+        console.log('jq failed', e)
+      }
     }, 700)
   }
 
