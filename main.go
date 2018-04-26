@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -20,6 +23,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/lucsky/cuid"
 	"github.com/rs/zerolog"
+	redis "gopkg.in/redis.v5"
 	"gopkg.in/tylerb/graceful.v1"
 )
 
@@ -28,12 +32,14 @@ type Settings struct {
 	Port         string `envconfig:"PORT" required:"true"`
 	JQPath       string `envconfig:"JQ_PATH" required:"true"`
 	DatabaseURL  string `envconfig:"DATABASE_URL" required:"true"`
+	RedisURL     string `envconfig:"REDIS_URL"`
 	TrelloAPIKey string `envconfig:"TRELLO_API_KEY" required:"true"`
 	HashidsSalt  string `envconfig:"HASHIDS_SALT" required:"true"`
 }
 
 var err error
 var pg *sqlx.DB
+var rds *redis.Client
 var s Settings
 var router *mux.Router
 var schema graphql.Schema
@@ -52,6 +58,18 @@ func main() {
 			Msg("error connecting to postgres")
 	}
 
+	rurl, err := url.Parse(s.RedisURL)
+	if s.RedisURL != "" && err == nil {
+		passw, _ := rurl.User.Password()
+		rds = redis.NewClient(&redis.Options{
+			Addr:     rurl.Host,
+			Password: passw,
+		})
+	} else {
+		log.Debug().Str("url", s.RedisURL).
+			Msg("invalid redis url, request logging capabilities will not work")
+	}
+
 	jq.Path = s.JQPath
 
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
@@ -68,6 +86,7 @@ func main() {
 
 	router.Path("/trello/card").Methods("GET").HandlerFunc(GetCard)
 	router.Path("/trello/card").Methods("PUT").HandlerFunc(SetCard)
+	router.Path("/trello/card").Methods("DELETE").HandlerFunc(DelCardEndpoint)
 
 	// receive webhooks here
 	router.HandleFunc("/w/{address}", func(w http.ResponseWriter, r *http.Request) {
@@ -90,9 +109,28 @@ func main() {
 			goto end
 		}
 
+		// save last requests for this endpoint on redis
+		rds.LPush(address+":lreqs", body)
+		rds.Expire(address+":lreqs", time.Hour*24*30)
+		if rand.Intn(7) == 1 {
+			rds.LTrim(address+"lreqs", 0, 5)
+		}
+
 		targets, err = getEndpointTargets(pg, address)
 		if err != nil {
-			errorCode = 404
+			errorCode = 500
+			if err == sql.ErrNoRows {
+				// try to return some http codes that will potentially cancel the webhook
+				// on the server that is sending it
+				if rand.Intn(7) == 1 {
+					errorCode = 410
+					// at least trello will cancel the webhook on a 410
+				} else {
+					errorCode = 200
+					// sometimes webhooks will try to resend if you return an error code
+					// to it's better to just return 200 most of the times
+				}
+			}
 			goto end
 		}
 
@@ -112,6 +150,7 @@ func main() {
 					target.Filter,
 					[]jq.JQOpt{
 						{"compact-output", true},
+						{"raw-output", true},
 					},
 				}
 

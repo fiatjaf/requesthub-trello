@@ -68,7 +68,7 @@ input {
       font-family: monospace;
     }
     #setup label textarea {
-      height: 100px;
+      height: 80px;
       min-width: 100%;
     }
   #setup button {
@@ -86,3 +86,32 @@ input {
   font-family: monospace;
   text-align: center;
 }
+
+#view {}
+  #view code {
+    font-size: 1.2em;
+  }
+  #view ul {
+    margin: 0;
+    padding: 0;
+  }
+    #view li {
+      padding: 17px;
+      border-radius: 7px;
+      font-family: monospace;
+      overflow: hidden;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+      #view li:hover {
+        background: #EDEFF0;
+      }
+    #view li.active {
+      overflow: auto;
+      height: auto;
+      white-space: pre-wrap;
+      background: #EDEFF0;
+    }
+      #view li.active a {
+        display: block;
+      }

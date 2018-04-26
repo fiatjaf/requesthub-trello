@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/lucsky/cuid"
@@ -27,12 +28,16 @@ func GetCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	endpoints := []struct {
-		Address string `json:"address" db:"address"`
-		Filter  string `json:"filter" db:"filter"`
-	}{}
+	type Endpoint struct {
+		Id           int           `json:"id" db:"id"`
+		Address      string        `json:"address" db:"address"`
+		Filter       string        `json:"filter" db:"filter"`
+		LastRequests []interface{} `json:"last_requests"`
+	}
+	endpoints := make([]Endpoint, 0)
+
 	err = pg.Select(&endpoints, `
-SELECT address, filter
+SELECT id, filter, address
 FROM pipe
 INNER JOIN input ON pipe.i = input.address
 INNER JOIN output ON pipe.o = output.id
@@ -45,6 +50,11 @@ WHERE output.target = $1
 		log.Warn().Err(err).Str("card", card).
 			Msg("failed to fetch endpoint data for card")
 		http.Error(w, "failed to fetch endpoint data for card: "+err.Error(), 500)
+	}
+
+	// now fetch the last requests these endpoints have received
+	for i, end := range endpoints {
+		endpoints[i].LastRequests = getLastRequests(end.Address)
 	}
 
 	json.NewEncoder(w).Encode(endpoints)
@@ -89,8 +99,7 @@ WITH i AS (
   INSERT INTO input (address, owner)
   VALUES ($1, $2)
   RETURNING address
-),
-     o AS (
+), o AS (
   INSERT INTO output (kind, target, filter, owner, data)
   VALUES ('trello:comment', $3, $4, $2, $5)
   RETURNING id
@@ -105,12 +114,10 @@ INSERT INTO pipe VALUES ((SELECT address FROM i), (SELECT id FROM o))
 		_, err = pg.Exec(`
 WITH io AS (
   SELECT * FROM pipe WHERE i = $1
-),
-      i AS (
+), i AS (
   UPDATE input SET address = $2
   WHERE address = (SELECT i FROM io)
-),
-      o AS (
+), o AS (
   UPDATE output SET filter = $3, target = $4, data = $5
   WHERE id = (SELECT o FROM io)
 )
@@ -125,6 +132,60 @@ SELECT NULL
 	}
 
 	json.NewEncoder(w).Encode(info.NewAddress)
+}
+
+func DelCardEndpoint(w http.ResponseWriter, r *http.Request) {
+	var res sql.Result
+
+	card := r.URL.Query().Get("card")
+	token := r.URL.Query().Get("token")
+
+	// check if token is correct and card exists and whatever
+	_, err := trelloUsernameAndCard(token, card)
+	if err != nil {
+		log.Warn().Err(err).
+			Str("token", token).
+			Str("card", card).
+			Msg("failed to get member and card info")
+		http.Error(w, err.Error(), 401)
+		return
+	}
+
+	// this time we need the output.id to ensure we don't delete the wrong
+	// endpoint and pipe
+	outputId, err := strconv.Atoi(r.URL.Query().Get("id"))
+	if err != nil {
+		goto end
+	}
+
+	res, err = pg.Exec(`
+WITH del_o AS (
+  DELETE FROM output WHERE id = $1 AND target = $2
+  RETURNING id
+), del_io AS (
+  DELETE FROM pipe WHERE o = (SELECT id FROM del_o)
+  RETURNING *
+)
+
+DELETE FROM input
+WHERE address = (SELECT i FROM del_io)
+  AND NOT EXISTS(SELECT * FROM pipe WHERE i = (SELECT i FROM del_io))
+    `, outputId, card)
+
+end:
+	if err != nil {
+		log.Warn().Err(err).Int("id", outputId).Str("card", card).
+			Msg("failed to delete endpoint.")
+		http.Error(w, "failed to delete endpoint: "+err.Error(), 403)
+		return
+	}
+
+	if n, err := res.RowsAffected(); n == 0 {
+		log.Print(err)
+		w.WriteHeader(204)
+		return
+	}
+	w.WriteHeader(200)
 }
 
 func trelloUsernameAndCard(token string, card string) (username string, err error) {

@@ -19,3 +19,4 @@ CREATE TABLE pipe (
   i text REFERENCES input(address),
   o int REFERENCES output(id)
 );
+

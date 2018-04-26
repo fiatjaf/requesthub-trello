@@ -4,6 +4,7 @@ const h = require('react-hyperscript')
 const React = require('react')
 const render = require('react-dom').render
 const debounce = require('debounce')
+const Textarea = require('react-textarea-autosize').default
 
 const Loader = require('./loader')
 const {getToken} = require('./helpers')
@@ -16,11 +17,12 @@ class Setup extends React.Component {
 
     this.cardShortLink = t.arg('cardShortLink')
     this.address = t.arg('address')
+    this.last_requests = t.arg('last_requests')
     this.state = {
       loading: null,
       success: null,
       filter: t.arg('filter') || '.',
-      testData: '{}',
+      testData: t.arg('test_data') || '{}',
       testResult: ''
     }
 
@@ -39,6 +41,7 @@ class Setup extends React.Component {
 
   componentDidMount () {
     this.jq()
+    jq.onInitialized.addListener(() => this.jq())
   }
 
   render () {
@@ -66,6 +69,25 @@ class Setup extends React.Component {
             ' filter ',
             h('code', this.state.filter),
             ' and a comment with the resulting text will be created on this card.'
+          ]),
+          h('div', [
+            h('h2', 'Try it right now'),
+            h('pre', [
+              h('code', `# run this on your terminal
+curl -X POST ${process.env.SERVICE_URL}/w/${this.state.success} \
+-d '{"card": "${this.cardShortLink}"}'`)
+            ]),
+            h('p', [
+              'Or use ',
+              h('a', {href: 'https://chrome.google.com/webstore/hgmloofddffdnphfgcellkdfbfbjeloo', target: '_blank'}, 'a'),
+              ' ',
+              h('a', {href: 'https://www.getpostman.com/', target: '_blank'}, 'different'),
+              ' ',
+              h('a', {href: 'https://chrome.google.com/webstore/aejoelaoggembcahagimdiliamlcdmfm', target: '_blank'}, 'HTTP'),
+              ' ',
+              h('a', {href: 'https://insomnia.rest/', target: '_blank'}, 'client'),
+              '.'
+            ])
           ])
         ])
       )
@@ -94,7 +116,7 @@ class Setup extends React.Component {
         ]),
         h('label', [
           h('span', 'Incoming JSON test data: '),
-          h('textarea', {
+          h(Textarea, {
             value: this.state.testData,
             onChange: e => {
               e.preventDefault()
@@ -134,7 +156,9 @@ class Setup extends React.Component {
       })
   }
 
+
   done () {
+    t.set('card', 'shared', '~', Date.now())
     t.closeModal()
     t.notifyParent('done')
   }
