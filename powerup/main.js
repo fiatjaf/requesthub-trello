@@ -18,25 +18,23 @@ TrelloPowerUp.initialize({
                 .then(r => r.json())
             ]))
             .then(([card, endpoints]) => {
-              if (endpoints.length) {
-                return [{
-                  icon: './icon.svg',
-                  text: `Endpoints: ${endpoints.length}`,
-                  callback: t => t.popup({
-                    title: 'Active endpoints for this card',
-                    items: endpoints.map(end => ({
-                      text: `${process.env.SERVICE_URL}/w/${end.address}`,
-                      callback: t => setupEndpointModal(t, card.shortLink, end)
-                    }))
-                  })
-                }]
-              } else {
-                return [{
-                  icon: './icon.svg',
-                  text: 'Create endpoint',
-                  callback: t => setupEndpointModal(t, card.shortLink, null)
-                }]
-              }
+              var items = endpoints.map(end => ({
+                text: `Endpoint ${end.address}`,
+                callback: t => setupEndpointModal(t, card.shortLink, end)
+              }))
+              items.push({
+                text: '→ Create an endpoint for incoming webhooks',
+                callback: t => setupEndpointModal(t, card.shortLink, null)
+              })
+
+              return [{
+                icon: './icon.svg',
+                text: 'RequestHub',
+                callback: t => t.popup({
+                  title: 'RequestHub',
+                  items
+                })
+              }]
             })
             .catch(e => {
               console.log('error loading card-button', e)
