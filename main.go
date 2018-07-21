@@ -23,7 +23,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/lucsky/cuid"
 	"github.com/rs/zerolog"
-	redis "gopkg.in/redis.v5"
+	"gopkg.in/redis.v5"
 	"gopkg.in/tylerb/graceful.v1"
 )
 
